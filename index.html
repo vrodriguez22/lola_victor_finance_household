@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Casa · Household Finance</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--tx:#14171f;--mu:#6b7280;--ln:#e5e7eb;--ac:#4f46e5;--ok:#059669;--bad:#dc2626}
+@media(prefers-color-scheme:dark){:root{--bg:#0e1015;--card:#171a22;--tx:#e8eaf0;--mu:#8b92a3;--ln:#262b36;--ac:#818cf8;--ok:#34d399;--bad:#f87171}}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;background:var(--bg);color:var(--tx)}
+header{position:sticky;top:0;z-index:5;background:var(--bg);padding:12px 16px 0;border-bottom:1px solid var(--ln)}
+.top{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+h1{font-size:17px;margin:0;font-weight:650}h3{margin:0 0 8px;font-size:14px}
+.seg{display:flex;background:var(--card);border:1px solid var(--ln);border-radius:10px;overflow:hidden}
+.seg button{border:0;background:none;color:var(--mu);padding:6px 12px;cursor:pointer;font:inherit}
+.seg button.on{background:var(--ac);color:#fff}
+nav{display:flex;gap:2px;overflow-x:auto;margin-top:8px}nav button{border:0;background:none;color:var(--mu);padding:9px 12px;cursor:pointer;font:inherit;white-space:nowrap;border-bottom:2px solid transparent}
+nav button.on{color:var(--tx);border-color:var(--ac);font-weight:600}
+main{max-width:1200px;margin:0 auto;padding:16px}
+.card{background:var(--card);border:1px solid var(--ln);border-radius:14px;padding:14px;margin-bottom:14px}
+.grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.kpi{font-size:22px;font-weight:650}.mu{color:var(--mu);font-size:12px}.ok{color:var(--ok)}.bad{color:var(--bad)}
+.sc{overflow-x:auto}table{border-collapse:collapse;width:100%}th,td{padding:4px 6px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--ln)}
+th{color:var(--mu);font-weight:500;font-size:12px}td:first-child,th:first-child{text-align:left;position:sticky;left:0;background:var(--card)}
+td input{width:62px}input,select,button.b{font:inherit;color:var(--tx);background:var(--bg);border:1px solid var(--ln);border-radius:8px;padding:5px 7px}
+td input{text-align:right;border-color:transparent;background:none}td input:focus{border-color:var(--ac);background:var(--bg)}
+.gh td{font-weight:650;background:var(--bg)!important;padding-top:10px}.tt td{font-weight:600}
+.n span{cursor:pointer}.n b{cursor:pointer;color:var(--mu);margin-left:6px;font-weight:400}.n small{color:var(--mu);margin-left:4px}
+button.b{cursor:pointer}button.p{background:var(--ac);color:#fff;border-color:var(--ac)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px}.ch{height:260px;position:relative}
+.bar{height:6px;background:var(--ln);border-radius:4px;overflow:hidden;min-width:80px}.bar i{display:block;height:100%;background:var(--ac)}
+#login{max-width:340px;margin:12vh auto;padding:16px}#login input{width:100%;margin-bottom:8px;padding:10px}
+</style></head><body><div id="app"></div>
+<script>
+// ====== CONFIG: paste your Supabase values ======
+const SB_URL='https://oamqfjipfmhjmrudveeq.supabase.co', SB_KEY='sb_publishable_QelegGp07W3yNK4bs_7Xpw_kS7Yf42G';
+// ================================================
+const sb=supabase.createClient(SB_URL,SB_KEY);
+const M=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const L={income:'Income',fixed:'Fixed expenses',other:'Other expenses',saving:'Savings & investments'};
+const COL=['#4f46e5','#10b981','#f59e0b','#ef4444','#06b6d4','#8b5cf6','#ec4899','#84cc16','#f97316','#64748b'];
+const now=new Date();
+const S={y:now.getFullYear(),m:now.getMonth(),v:'dash',scope:'all',people:[],cats:[],ent:{},splits:[],sav:[],loans:[]};
+const $=s=>document.querySelector(s),f=n=>(n<0?'-':'')+'$'+Math.round(Math.abs(n)).toLocaleString('en-US');
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const nm=id=>S.people.find(p=>p.id===id)?.name||'?';
+const partner=()=>S.people.find(p=>p.id!==S.uid);
+const sc=()=>S.cats.filter(c=>S.scope==='all'||(S.scope==='me'?c.owner===S.uid:c.owner!==S.uid));
+const val=(c,m)=>+(S.ent[c.id+'|'+S.y+'|'+m]?.amount)||0;
+const tot=(k,m,cs=sc())=>cs.filter(c=>c.kind===k).reduce((a,c)=>a+val(c,m),0);
+const exp=(m,cs=sc())=>tot('fixed',m,cs)+tot('other',m,cs);
+const net=(m,cs=sc())=>tot('income',m,cs)-exp(m,cs)-tot('saving',m,cs);
+const ytd=fn=>M.reduce((a,_,m)=>a+fn(m),0);
+const sum=(a,k)=>a.reduce((s,x)=>s+(+x[k]||0),0);
+const cls=n=>n<0?'bad':'ok';
+let CH=[],JOBS=[];
+function chart(id,cfg){JOBS.push(()=>{const el=document.getElementById(id);if(!el)return;cfg.options={responsive:true,maintainAspectRatio:false,...cfg.options};CH.push(new Chart(el,cfg))})}
+
+// ---------- data ----------
+async function load(){
+  const q=(t,fn)=>{let r=sb.from(t).select('*');if(fn)r=fn(r);return r.then(x=>{if(x.error)throw x.error;return x.data})};
+  try{
+    const[p,c,e,s,v,l]=await Promise.all([q('people'),q('categories'),q('entries',r=>r.eq('year',S.y).limit(5000)),q('splits',r=>r.order('date',{ascending:false}).limit(200)),q('savings'),q('loans')]);
+    S.people=p;S.cats=c.sort((a,b)=>a.sort-b.sort);S.ent={};e.forEach(x=>S.ent[x.category_id+'|'+x.year+'|'+x.month]=x);S.splits=s;S.sav=v;S.loans=l;
+    if(document.activeElement?.tagName==='INPUT')S.dirty=1;else render();
+  }catch(err){alert('Load error: '+(err.message||err))}
+}
+document.addEventListener('focusout',()=>{if(S.dirty){S.dirty=0;setTimeout(()=>{if(document.activeElement?.tagName!=='INPUT')render()},50)}});
+async function setEnt(cid,m,v){v=+v||0;const k=cid+'|'+S.y+'|'+m;S.ent[k]={category_id:cid,year:S.y,month:m,amount:v};
+  const r=await sb.from('entries').upsert({category_id:cid,year:S.y,month:m,amount:v},{onConflict:'category_id,year,month'});if(r.error)alert(r.error.message);render()}
+async function upd(t,id,k,v){await sb.from(t).update({[k]:v}).eq('id',id);load()}
+async function add(t,o){const r=await sb.from(t).insert(o);if(r.error)alert(r.error.message);load()}
+async function del(t,id,ask=1){if(ask&&!confirm('Delete this item?'))return;await sb.from(t).delete().eq('id',id);load()}
+function addCat(k){const n=prompt('New '+L[k].toLowerCase()+' category name:');if(!n)return;
+  const o=S.scope==='partner'&&partner()?partner().id:S.uid;add('categories',{owner:o,name:n,kind:k,sort:Math.max(0,...S.cats.map(c=>c.sort))+1})}
+function renCat(id){const c=S.cats.find(x=>x.id===id),n=prompt('Rename category:',c.name);if(n)upd('categories',id,'name',n)}
+const delCat=id=>del('categories',id);
+let rt;function subscribe(){sb.channel('db').on('postgres_changes',{event:'*',schema:'public'},()=>{clearTimeout(rt);rt=setTimeout(load,250)}).subscribe()}
+
+// ---------- auth ----------
+function showLogin(msg=''){$('#app').innerHTML=`<div id="login" class="card"><h1>Casa</h1><p class="mu">Sign in to your household</p><input id="em" type="email" placeholder="Email" autocomplete="username"><input id="pw" type="password" placeholder="Password" autocomplete="current-password"><button class="b p" style="width:100%;padding:10px" onclick="login()">Sign in</button><p class="bad">${esc(msg)}</p></div>`}
+async function login(){const r=await sb.auth.signInWithPassword({email:$('#em').value.trim(),password:$('#pw').value});if(r.error)return showLogin(r.error.message);boot()}
+async function logout(){await sb.auth.signOut();location.reload()}
+async function boot(){
+  if(SB_URL.startsWith('YOUR'))return $('#app').innerHTML='<main><div class="card">Set SB_URL and SB_KEY at the top of index.html.</div></main>';
+  const{data:{session}}=await sb.auth.getSession();if(!session)return showLogin();
+  S.uid=session.user.id;
+  const r=await sb.from('people').select('id').eq('id',S.uid);
+  if(!r.data?.length){const n=prompt('Your name (shown to your partner):')||'Me';await sb.from('people').insert({id:S.uid,name:n})}
+  await load();subscribe();
+}
+
+// ---------- shell ----------
+const TABS=[['dash','Overview'],['track','Expenses'],['cash','Cash flow'],['budget','Budget'],['sav','Savings'],['loans','Credits'],['split','Split'],['rep','Reports'],['set','Settings']];
+function shell(){const p=partner();return `<header><div class="top"><h1>Casa</h1>
+<div class="row" style="margin:0"><div class="seg"><button onclick="yr(-1)">‹</button><button disabled style="color:var(--tx)">${S.y}</button><button onclick="yr(1)">›</button></div>
+<div class="seg">${[['all','Household'],['me','Me'],['partner',p?esc(p.name):'Partner']].map(([k,t])=>`<button class="${S.scope===k?'on':''}" onclick="S.scope='${k}';render()">${t}</button>`).join('')}</div></div></div>
+<nav>${TABS.map(([k,t])=>`<button class="${S.v===k?'on':''}" onclick="S.v='${k}';render();scrollTo(0,0)">${t}</button>`).join('')}</nav></header>`}
+function yr(d){S.y+=d;load()}
+function render(){
+  if(!S.uid)return;CH.forEach(c=>c.destroy());CH=[];JOBS=[];
+  const a=document.activeElement?.dataset?.k;
+  $('#app').innerHTML=shell()+'<main>'+V[S.v]()+'</main>';
+  JOBS.forEach(j=>j());if(a)document.querySelector(`[data-k="${a}"]`)?.focus();
+}
+const msel=()=>`<select onchange="S.m=+this.value;render()">${M.map((x,i)=>`<option value="${i}" ${i===S.m?'selected':''}>${x} ${S.y}</option>`).join('')}</select>`;
+const monthly=(id)=>chart(id,{type:'bar',data:{labels:M,datasets:[{label:'Income',data:M.map((_,m)=>tot('income',m)),backgroundColor:COL[1]},{label:'Expenses',data:M.map((_,m)=>exp(m)),backgroundColor:COL[3]},{label:'Saved',data:M.map((_,m)=>tot('saving',m)),backgroundColor:COL[0]}]}});
+function donut(id,cs,m){const rows=cs.filter(c=>c.kind==='fixed'||c.kind==='other').map(c=>[c.name,m==null?ytd(x=>val(c,x)):val(c,m)]).filter(r=>r[1]>0);
+  const g={};rows.forEach(([n,v])=>g[n]=(g[n]||0)+v);const top=Object.entries(g).sort((a,b)=>b[1]-a[1]).slice(0,9);
+  chart(id,{type:'doughnut',data:{labels:top.map(r=>r[0]),datasets:[{data:top.map(r=>r[1]),backgroundColor:COL}]},options:{plugins:{legend:{position:'right'}}}})}
+
+const V={
+dash(){const cs=sc(),I=tot('income',S.m),E=exp(S.m),Sv=tot('saving',S.m),N=I-E-Sv;
+  monthly('c1');donut('c2',cs,S.m);
+  const pc=S.people.map(p=>{const c=S.cats.filter(x=>x.owner===p.id),inc=ytd(m=>tot('income',m,c)),ex=ytd(m=>exp(m,c)),sv=ytd(m=>tot('saving',m,c)),st=sum(S.sav.filter(s=>s.owner===p.id),'balance'),debt=sum(S.loans.filter(l=>l.owner===p.id),'balance');
+    return `<div class="card"><h3>${esc(p.name)}${p.id===S.uid?' (you)':''} · ${S.y} so far</h3><div class="mu">Left over after expenses & savings</div><div class="kpi ${cls(inc-ex-sv)}">${f(inc-ex-sv)}</div>
+    <table><tr><td>Income</td><td>${f(inc)}</td></tr><tr><td>Expenses</td><td>${f(ex)}</td></tr><tr><td>Saved this year</td><td>${f(sv)}</td></tr><tr><td>Savings balance</td><td><b>${f(st+sv)}</b></td></tr><tr><td>Debt</td><td>${f(debt)}</td></tr></table></div>`}).join('');
+  return `<div class="row">${msel()}</div><div class="grid">${[['Income',I],['Expenses',E],['Saved',Sv],['Left over',N]].map(([t,v])=>`<div class="card"><div class="mu">${t}</div><div class="kpi ${t==='Left over'?cls(v):''}">${f(v)}</div></div>`).join('')}</div>
+  <div class="grid"><div class="card"><h3>Month by month</h3><div class="ch"><canvas id="c1"></canvas></div></div><div class="card"><h3>Where ${M[S.m]} went</h3><div class="ch"><canvas id="c2"></canvas></div></div></div>
+  <h3>Personal balances</h3><div class="grid">${pc}</div>`},
+
+track(){const cs=sc();let h=`<div class="card"><div class="sc"><table><thead><tr><th>Category</th>${M.map(x=>`<th>${x}</th>`).join('')}<th>Total</th></tr></thead><tbody>`;
+  ['income','fixed','other','saving'].forEach(k=>{const g=cs.filter(c=>c.kind===k);
+    h+=`<tr class="gh"><td colspan="14">${L[k]} <button class="b" onclick="addCat('${k}')">+ add</button></td></tr>`;
+    g.forEach(c=>h+=`<tr><td class="n"><span onclick="renCat('${c.id}')" title="Rename">${esc(c.name)}</span>${S.scope==='all'?`<small>${esc(nm(c.owner)[0])}</small>`:''}<b onclick="delCat('${c.id}')" title="Delete">×</b></td>${M.map((_,m)=>`<td><input type="number" inputmode="decimal" step="any" data-k="${c.id}|${m}" value="${val(c,m)||''}" onchange="setEnt('${c.id}',${m},this.value)"></td>`).join('')}<td>${f(ytd(m=>val(c,m)))}</td></tr>`);
+    h+=`<tr class="tt"><td>Total</td>${M.map((_,m)=>`<td>${f(tot(k,m,cs))}</td>`).join('')}<td>${f(ytd(m=>tot(k,m,cs)))}</td></tr>`});
+  h+=`<tr class="gh"><td>Left over</td>${M.map((_,m)=>`<td class="${cls(net(m,cs))}">${f(net(m,cs))}</td>`).join('')}<td class="${cls(ytd(m=>net(m,cs)))}">${f(ytd(m=>net(m,cs)))}</td></tr></tbody></table></div></div>
+  <p class="mu">Tip: tap a category name to rename it, × to delete. New categories are assigned to ${S.scope==='partner'?'your partner':'you'} — switch the view above to add for the other person.</p>`;return h},
+
+cash(){let c=0;const cum=M.map((_,m)=>(c+=net(m)));
+  chart('c1',{type:'bar',data:{labels:M,datasets:[{type:'line',label:'Cumulative left over',data:cum,borderColor:COL[0],tension:.3,yAxisID:'y'},{label:'Income',data:M.map((_,m)=>tot('income',m)),backgroundColor:COL[1]},{label:'Out (expenses + savings)',data:M.map((_,m)=>exp(m)+tot('saving',m)),backgroundColor:COL[3]}]}});
+  const r=(t,fn,b)=>`<tr class="${b?'tt':''}"><td>${t}</td>${M.map((_,m)=>`<td class="${b?cls(fn(m)):''}">${f(fn(m))}</td>`).join('')}<td>${f(ytd(fn))}</td></tr>`;let k=0;
+  return `<div class="card"><h3>Cash flow ${S.y}</h3><div class="ch"><canvas id="c1"></canvas></div></div><div class="card"><div class="sc"><table><thead><tr><th></th>${M.map(x=>`<th>${x}</th>`).join('')}<th>Total</th></tr></thead><tbody>
+  ${r('Income',m=>tot('income',m))}${r('Fixed expenses',m=>tot('fixed',m))}${r('Other expenses',m=>tot('other',m))}${r('Savings & investments',m=>tot('saving',m))}${r('Left over',m=>net(m),1)}
+  <tr><td>Cumulative</td>${cum.map(v=>`<td class="${cls(v)}">${f(v)}</td>`).join('')}<td></td></tr></tbody></table></div></div>`},
+
+budget(){const cs=sc().filter(c=>c.kind==='fixed'||c.kind==='other');let tb=0,ta=0;
+  const rows=cs.map(c=>{const a=val(c,S.m),b=+c.budget||0;tb+=b;ta+=a;const p=b?Math.min(100,a/b*100):0;
+    return `<tr><td>${esc(c.name)}${S.scope==='all'?`<small class="mu"> ${esc(nm(c.owner)[0])}</small>`:''}</td><td><input type="number" step="any" style="width:70px;border:1px solid var(--ln);background:var(--bg)" value="${b||''}" onchange="upd('categories','${c.id}','budget',+this.value||0)"></td><td>${f(a)}</td><td class="${b&&a>b?'bad':''}">${b?f(b-a):'—'}</td><td><div class="bar"><i style="width:${p}%;${a>b&&b?'background:var(--bad)':''}"></i></div></td></tr>`}).join('');
+  return `<div class="row">${msel()}<span class="mu">Set a monthly budget per category; it applies to every month.</span></div><div class="card"><div class="sc"><table><thead><tr><th>Category</th><th>Budget</th><th>Spent</th><th>Left</th><th></th></tr></thead><tbody>${rows}<tr class="tt"><td>Total</td><td>${f(tb)}</td><td>${f(ta)}</td><td class="${cls(tb-ta)}">${f(tb-ta)}</td><td></td></tr></tbody></table></div></div>`},
+
+sav(){const cs=sc(),acc=S.sav.filter(s=>S.scope==='all'||(S.scope==='me'?s.owner===S.uid:s.owner!==S.uid)),start=sum(acc,'balance');
+  let c=start;const line=M.map((_,m)=>(c+=tot('saving',m,cs)));const contrib=ytd(m=>tot('saving',m,cs)),goal=sum(acc,'goal');
+  chart('c1',{type:'line',data:{labels:M,datasets:[{label:'Savings balance',data:line,borderColor:COL[1],backgroundColor:COL[1]+'33',fill:true,tension:.3}]}});
+  const o=S.scope==='partner'&&partner()?partner().id:S.uid;
+  return `<div class="grid"><div class="card"><div class="mu">Starting capital (Jan 1)</div><div class="kpi">${f(start)}</div></div><div class="card"><div class="mu">Saved in ${S.y}</div><div class="kpi">${f(contrib)}</div></div><div class="card"><div class="mu">Total now</div><div class="kpi ok">${f(start+contrib)}</div>${goal?`<div class="bar"><i style="width:${Math.min(100,(start+contrib)/goal*100)}%"></i></div><div class="mu">Goal ${f(goal)}</div>`:''}</div></div>
+  <div class="card"><h3>Balance through ${S.y}</h3><div class="ch"><canvas id="c1"></canvas></div></div>
+  <div class="card"><h3>Savings accounts / funds <button class="b" onclick="addSav('${o}')">+ add</button></h3><div class="sc"><table><thead><tr><th>Name</th><th>Starting balance</th><th>Goal</th><th></th></tr></thead><tbody>${acc.map(s=>`<tr><td><input style="width:150px;text-align:left;border:1px solid var(--ln)" value="${esc(s.name)}" onchange="upd('savings','${s.id}','name',this.value)"> <small class="mu">${esc(nm(s.owner))}</small></td><td><input type="number" step="any" style="width:90px;border:1px solid var(--ln)" value="${s.balance}" onchange="upd('savings','${s.id}','balance',+this.value||0)"></td><td><input type="number" step="any" style="width:90px;border:1px solid var(--ln)" value="${s.goal||''}" onchange="upd('savings','${s.id}','goal',+this.value||0)"></td><td><span style="cursor:pointer" onclick="del('savings','${s.id}')">×</span></td></tr>`).join('')}</tbody></table></div><p class="mu">Monthly contributions come automatically from the "Savings & investments" categories in Expenses.</p></div>`},
+
+loans(){const ls=S.loans.filter(l=>S.scope==='all'||(S.scope==='me'?l.owner===S.uid:l.owner!==S.uid));const o=S.scope==='partner'&&partner()?partner().id:S.uid;
+  const eta=l=>{const B=+l.balance,P=+l.payment,r=(+l.rate)/1200;if(!B)return'paid';if(!P)return'—';if(r>0){if(P<=r*B)return'never';return Math.ceil(-Math.log(1-r*B/P)/Math.log(1+r))+' mo'}return Math.ceil(B/P)+' mo'};
+  const inp=(l,k,w=90,step='any')=>`<input type="number" step="${step}" style="width:${w}px;border:1px solid var(--ln)" value="${l[k]||''}" onchange="upd('loans','${l.id}','${k}',+this.value||0)">`;
+  return `<div class="grid"><div class="card"><div class="mu">Total owed</div><div class="kpi bad">${f(sum(ls,'balance'))}</div></div><div class="card"><div class="mu">Monthly payments</div><div class="kpi">${f(sum(ls,'payment'))}</div></div></div>
+  <div class="card"><h3>Credits & loans <button class="b" onclick="addLoan('${o}')">+ add</button></h3><div class="sc"><table><thead><tr><th>Name</th><th>Balance</th><th>APR %</th><th>Monthly</th><th>Payoff</th><th></th></tr></thead><tbody>${ls.map(l=>`<tr><td><input style="width:140px;text-align:left;border:1px solid var(--ln)" value="${esc(l.name)}" onchange="upd('loans','${l.id}','name',this.value)"> <small class="mu">${esc(nm(l.owner))}</small></td><td>${inp(l,'balance')}</td><td>${inp(l,'rate',60)}</td><td>${inp(l,'payment',80)}</td><td>${eta(l)}</td><td><span style="cursor:pointer" onclick="del('loans','${l.id}')">×</span></td></tr>`).join('')}</tbody></table></div><p class="mu">Enter the current balance of each loan to see the payoff estimate.</p></div>`},
+
+split(){const me=S.uid,pa=partner()?.id;let owed=0;
+  S.splits.filter(s=>!s.settled).forEach(s=>{const x=+s.amount*(100-(+s.payer_share))/100;owed+=s.paid_by===me?x:-x});
+  const t=owed>0.005?`<span class="ok">${esc(nm(pa))} owes you ${f(owed)}</span>`:owed<-0.005?`<span class="bad">You owe ${esc(nm(pa))} ${f(-owed)}</span>`:'All settled 🎉';
+  return `<div class="card"><h3>Balance</h3><div class="kpi">${t}</div><div class="row" style="margin-top:8px"><button class="b" onclick="settleAll()">Settle up</button></div></div>
+  <div class="card"><h3>Add shared expense</h3><div class="row"><input id="sd" placeholder="What for?"><input id="sa" type="number" step="any" placeholder="Amount" style="width:100px"><select id="sp">${S.people.map(p=>`<option value="${p.id}" ${p.id===me?'selected':''}>${esc(p.name)} paid</option>`).join('')}</select><input id="ss" type="number" value="50" style="width:70px" title="Payer's share %"><span class="mu">% payer's share</span><button class="b p" onclick="addSplit()">Add</button></div></div>
+  <div class="card"><div class="sc"><table><thead><tr><th>Date</th><th>What</th><th>Paid by</th><th>Amount</th><th>Share</th><th></th><th></th></tr></thead><tbody>${S.splits.map(s=>`<tr style="${s.settled?'opacity:.5':''}"><td>${esc(s.date)}</td><td>${esc(s.descr)}</td><td>${esc(nm(s.paid_by))}</td><td>${f(s.amount)}</td><td>${s.payer_share}%</td><td><input type="checkbox" ${s.settled?'checked':''} onchange="upd('splits','${s.id}','settled',this.checked)" title="Settled"></td><td><span style="cursor:pointer" onclick="del('splits','${s.id}')">×</span></td></tr>`).join('')}</tbody></table></div></div>`},
+
+rep(){const cs=sc().filter(c=>c.kind==='fixed'||c.kind==='other'),I=ytd(m=>tot('income',m)),E=ytd(m=>exp(m)),Sv=ytd(m=>tot('saving',m));
+  const top=cs.map(c=>[c.name,ytd(m=>val(c,m))]).filter(r=>r[1]>0).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  const active=M.map((_,m)=>m).filter(m=>tot('income',m)||exp(m)),hi=active.sort((a,b)=>exp(b)-exp(a))[0];
+  chart('c1',{type:'bar',data:{labels:top.map(r=>r[0]),datasets:[{data:top.map(r=>r[1]),backgroundColor:COL[0]}]},options:{indexAxis:'y',plugins:{legend:{display:false}}}});
+  chart('c2',{type:'line',data:{labels:M,datasets:[{label:'Savings rate %',data:M.map((_,m)=>{const i=tot('income',m);return i?+(tot('saving',m)/i*100).toFixed(1):null}),borderColor:COL[1],tension:.3},{label:'Expense ratio %',data:M.map((_,m)=>{const i=tot('income',m);return i?+(exp(m)/i*100).toFixed(1):null}),borderColor:COL[3],tension:.3}]}});
+  donut('c3',cs,null);
+  return `<div class="grid"><div class="card"><div class="mu">Savings rate (YTD)</div><div class="kpi">${I?(Sv/I*100).toFixed(1):0}%</div></div><div class="card"><div class="mu">Avg monthly expenses</div><div class="kpi">${f(E/Math.max(1,S.y===now.getFullYear()?now.getMonth()+1:12))}</div></div><div class="card"><div class="mu">Biggest category</div><div class="kpi" style="font-size:17px">${top[0]?esc(top[0][0])+' · '+f(top[0][1]):'—'}</div></div><div class="card"><div class="mu">Highest-spend month</div><div class="kpi">${hi!=null?M[hi]+' · '+f(exp(hi)):'—'}</div></div></div>
+  <div class="grid"><div class="card"><h3>Top categories (YTD)</h3><div class="ch"><canvas id="c1"></canvas></div></div><div class="card"><h3>Expense mix (YTD)</h3><div class="ch"><canvas id="c3"></canvas></div></div></div>
+  <div class="card"><h3>Savings rate vs expense ratio</h3><div class="ch"><canvas id="c2"></canvas></div></div>`},
+
+set(){const o=S.people.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');
+  return `<div class="card"><h3>Your name</h3><div class="row"><input id="myn" value="${esc(nm(S.uid))}"><button class="b" onclick="rename()">Save</button></div></div>
+  <div class="card"><h3>Start a new year</h3><p class="mu">Moves to ${S.y+1}, adds this year's savings to each person's starting capital, and pre-fills ${S.y+1} with December's amounts (editable). Run it once, in December or January.</p><button class="b p" onclick="rollYear()">Start ${S.y+1}</button></div>
+  <div class="card"><h3>Load 2026 data (one time)</h3><p class="mu">Imports the two monthly sheets. Needs both partners to have logged in once.</p><div class="row"><select id="s1">${o}</select><span class="mu">= sheet 1 (husband)</span></div><div class="row"><select id="s2">${S.people[1]?S.people.map((p,i)=>`<option value="${p.id}" ${i===1?'selected':''}>${esc(p.name)}</option>`).join(''):o}</select><span class="mu">= sheet 2 (wife)</span></div><button class="b" onclick="seed()">Import 2026</button></div>
+  <div class="card"><button class="b" onclick="logout()">Sign out</button></div>`}
+};
+
+// ---------- actions ----------
+const addSav=o=>{const n=prompt('Account / fund name:');if(n)add('savings',{owner:o,name:n,balance:0,goal:0})};
+const addLoan=o=>{const n=prompt('Credit / loan name:');if(n)add('loans',{owner:o,name:n,balance:0,rate:0,payment:0})};
+function addSplit(){const a=+$('#sa').value;if(!a)return;add('splits',{descr:$('#sd').value||'Shared expense',amount:a,paid_by:$('#sp').value,payer_share:+$('#ss').value})}
+async function settleAll(){if(!confirm('Mark all as settled?'))return;await sb.from('splits').update({settled:true}).eq('settled',false);load()}
+async function rename(){await sb.from('people').update({name:$('#myn').value}).eq('id',S.uid);load()}
+async function rollYear(){if(!confirm(`Start ${S.y+1}? Run this only once.`))return;
+  for(const p of S.people){const own=S.cats.filter(c=>c.owner===p.id),sv=ytd(m=>tot('saving',m,own)),a=S.sav.find(s=>s.owner===p.id);
+    if(a&&sv)await sb.from('savings').update({balance:(+a.balance)+sv}).eq('id',a.id)}
+  const rows=S.cats.map(c=>({category_id:c.id,year:S.y+1,month:m,amount:val(c,11)})).flatMap(r=>M.map((_,m)=>({...r,month:m}))).filter(r=>r.amount);
+  S.y++;if(rows.length)await sb.from('entries').upsert(rows.map(r=>({...r,year:S.y})),{onConflict:'category_id,year,month'});S.m=0;S.v='track';load()}
+const P=s=>s.split(' ').flatMap(t=>{const[a,b]=t.split('x');return Array(b?+b:1).fill(+a)});
+const DH=[['Reg Salary','income','1550x8 1820x4'],['Bonus','income','0 0 1600 363 0x8'],['XIII Bonus','income','0 0 0 600 0 0 0 550 0 0 0 600'],
+['Mortgage/Rent','fixed','650 650 0 500x5 520x4'],['Electricity','fixed','60 60 45 60x9'],['Internet','fixed','20 20 0 0 23x8'],['Crediviva','fixed','10 10 21x6 42x4'],['Rodelag','fixed','10 10 50x6 75 75 0 0'],['Groceries','fixed','100x12'],['Health Insurance','fixed','75x8 86x4'],['Car Insurance','fixed','30 30 0 190 80 0 0 0 50x4'],['Car/Bike Gas','fixed','30 30 50x10'],['Cleaning House','fixed','18 18 35x10'],['Cell Phone','fixed','25x12'],['Streamings','fixed','0 0 0 15 0 15 0 15 0 15 15 15'],['Dog Food','fixed','0x5 50 50 50 40x4'],['Persianas','fixed','0x8 45x4'],['Credit Card','fixed','0x8 200x4'],
+['Dining Out','other','0 0 40x6 0x4'],['Car Maintenance','other','0 0 0 300 0 0 0 60 0 0 300 0'],['A/C Maintenance','other','0x5 52 0x3 70 0 0'],['International Travel','other','0x6 600 0x5'],['Mesa de Centro','other','0x8 100 100 0 0'],
+['Savings','saving','300 300 2000 800 300 300 0 500 300 300 300 1000'],['Investments','saving','0 0 300 300 0 0 0 300 0x4']];
+const DW=[['Reg Salary','income','0 0 1550 400 675 1300 1300 2000 2000 1666x3'],['Bonus','income','0 0 1800 216 0 972 0 150 200 600 0 0'],['XIII Bonus','income','0 0 500 0x8 500'],['VRC','income','0x8 200x4'],
+['Mortgage/Rent','fixed','650 650 0 0 500x3 520x5'],['Electricity','fixed','60 60 100 60 60 60 60 70 60 60 60 60'],['Internet','fixed','20 20 23 0 23x8'],['Crediviva','fixed','10 10 10 50x9'],['Rodelag','fixed','10 10 10 50x5 75 75 0 0'],['Groceries','fixed','100 100 100 30 30 50 50 100x5'],['Health Insurance','fixed','75x7 85 86x4'],['Car loan/insurance','fixed','30 30 30 0 0 351 351 300 200x4'],['Car Gas','fixed','30 30 30 40 80x8'],['Cleaning House','fixed','18 18 18 0 35x8'],['Cell Phone','fixed','25 25 25 40 40 40 40 0x5'],['Streamings','fixed','0 0 0 0 15 0 15 15 15 0 0 0'],['Dog Food','fixed','0x5 50 50 50 40x4'],['Credit card payment','fixed','0x7 300 400x4'],['Curtains','fixed','0x7 45x5'],
+['Dining Out','other','0 0 100 40x5 50 50 0 50'],['Activities Out','other','0x7 40 50 50 0 50'],['Car Maintenance','other','0 0 300 0 50 0 0 0 220 200 0 0'],['A/C Maintenance','other','0x5 52 0x3 70 0 0'],['International Travel','other','130 130 500 0x3 3500 0x5'],
+['Savings','saving','300 300 2000 150 250 700 250 200 250 300 100 300'],['Investments','saving','0 0 0 0 150 150 0x6']];
+async function seed(){const a=$('#s1').value,b=$('#s2').value;if(a===b)return alert('Pick two different people');
+  if(!confirm('Import the 2026 sheets?'))return;const cr=[],er=[];let i=0;
+  [[a,DH],[b,DW]].forEach(([o,D])=>D.forEach(([n,k,s])=>{const id=crypto.randomUUID();cr.push({id,owner:o,name:n,kind:k,sort:i++});P(s).forEach((v,m)=>v&&er.push({category_id:id,year:2026,month:m,amount:v}))}));
+  let r=await sb.from('categories').insert(cr);if(r.error)return alert(r.error.message);
+  r=await sb.from('entries').insert(er);if(r.error)return alert(r.error.message);
+  await sb.from('savings').insert([{owner:a,name:'Starting capital',balance:5000,goal:0},{owner:b,name:'Starting capital',balance:1100,goal:0}]);
+  await sb.from('loans').insert([[a,'Crediviva',42],[a,'Credit card',200],[b,'Crediviva',50],[b,'Car loan',200],[b,'Credit card',400]].map(([owner,name,payment])=>({owner,name,payment,balance:0,rate:0})));
+  S.y=2026;S.v='dash';load()}
+boot();
+</script></body></html>
